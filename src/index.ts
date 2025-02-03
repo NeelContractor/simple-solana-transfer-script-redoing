@@ -1,32 +1,51 @@
-import { Connection, Keypair, sendAndConfirmTransaction, SystemProgram, Transaction } from "@solana/web3.js";
+
+import { createMint, getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID, mintTo } from '@solana/spl-token';
+import { Keypair, Connection, clusterApiUrl, PublicKey } from '@solana/web3.js';
 import dotenv from "dotenv";
 dotenv.config();
 
-(async() => {
-    // this script create a account with some byte space allocated 
-    
-    const connection = new Connection(process.env.RPC!);
+const payer = Keypair.fromSecretKey(Uint8Array.from(process.env.PAYER!));
 
-    const dataAccount = Keypair.generate();
-    console.log("Data Account: " + dataAccount.publicKey.toBase58());
-    
-    const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.PAYER!)));
-    console.log("Payer's Address: " + payer.publicKey.toBase58());
+const mintAthority = payer;
 
-    console.log("hi there1")
-    const tx = new Transaction().add(
-        SystemProgram.createAccount({
-            fromPubkey: payer.publicKey,
-            newAccountPubkey: dataAccount.publicKey,
-            lamports: await connection.getMinimumBalanceForRentExemption(1000),
-            space: 1000,
-            programId: SystemProgram.programId
-        })
-    )
+const connection = new Connection(clusterApiUrl('devnet'));
 
-    console.log("hi there")
-    const txId = await connection.sendTransaction(tx, [payer, dataAccount]);
+async function createMintForToken(payer: Keypair, mintAuthority: PublicKey) {
+    const mint = await createMint(
+        connection,
+        payer,
+        mintAuthority,
+        null,
+        6
+    );
+    console.log('Mint created at', mint.toBase58());
+    return mint;
+}
 
-    console.log(`Created account with transaction ID: ${txId}`);
+async function mintNewTokens(mint: any, to: any, amount: any) { 
+    const tokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        payer,
+        mint,
+        new PublicKey(to)
+      );
 
-})();
+      console.log('Token account created at', tokenAccount.address.toBase58());
+      const tx = await mintTo(
+        connection,
+        payer,
+        mint,
+        tokenAccount.address,
+        payer,
+        amount
+      )
+      console.log('Minted', amount, 'tokens to', tokenAccount.address.toBase58());
+      console.log(`Transaction Signature: ${tx}`);
+}
+
+async function main() {
+    const mint = await createMintForToken(payer, mintAthority.publicKey);
+    await mintNewTokens(mint, mintAthority.publicKey, 1000000);    
+}
+
+main();
